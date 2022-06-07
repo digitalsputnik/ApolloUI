@@ -100,7 +100,8 @@ class eButton {
     }
 };
 
-eButton GroupSelector(0,0,320,54,&lcd,"G","Apollo0000");
+String startupString = "
+eButton GroupSelector(0,0,320,54,&lcd,"G","Apollo0189");
 eButton propIntensity(10,64,300,40,&lcd,"Intensity","80%");
 eButton propSaturation(10,114,300,40,&lcd,"Saturation","0%");
 eButton propHue(10,164,300,40,&lcd,"Hue","0%");
@@ -197,11 +198,58 @@ void getEncoder() {
   }
 }
 
+void parseDrawInput(String _inputString) {
+  // Some simple strings to operate
+  // Clear Screen: B000 000w320h480r000g000b000
+  // dark cyan horizontal stripe: B000 239w320h002r000g030b100
+  
+  if(_inputString[0] == 'B') {
+    int _x,_y,_width, _height, _r, _g, _b;
+    _x = _inputString.substring(1,5).toInt();
+    _y = _inputString.substring(5,9).toInt();
+    _width = _inputString.substring(9,13).toInt();
+    _height = _inputString.substring(13,17).toInt();
+    _r = _inputString.substring(17,21).toInt();
+    _g = _inputString.substring(21,25).toInt();
+    _b = _inputString.substring(25,29).toInt();
+    Serial.println("Draw Box:\n    x: "+String(_x)+" y: "+String(_y)+" width: "+String(_width)+" height: "+String(_height)+ " Color: ("+String(_r)+","+String(_g)+","+String(_b)+")");
+    
+    lcd.fillRect(_x,_y,_width,_height,lcd.color888(_r,_g,_b));
+  }
+    if(_inputString[0] == 'T') {
+    int _x,_y,_align, _rf, _gf, _bf, _rb, _gb, _bb;
+    String _val;
+    _x = _inputString.substring(1,5).toInt();
+    _y = _inputString.substring(5,9).toInt();
+    _align = _inputString.substring(9,11).toInt();
+    _rf = _inputString.substring(11,15).toInt();
+    _gf = _inputString.substring(15,19).toInt();
+    _bf = _inputString.substring(19,23).toInt();
+    _rb = _inputString.substring(23,27).toInt();
+    _gb = _inputString.substring(27,31).toInt();
+    _bb = _inputString.substring(31,34).toInt();
+    _val = _inputString.substring(34);
+    Serial.println("Draw Text:\n    x: "+String(_x)+" y: "+String(_y)+" align: "+String(_align)+" Fg Color: ("+String(_rf)+","+String(_gf)+","+String(_bf)+")  Bg Color: ("+String(_rb)+","+String(_gb)+","+String(_bb)+")");
+
+    //https://github.com/lovyan03/LovyanGFX/blob/5cfb85d2843ad13cea571af86154d26551991ca8/examples/HowToUse/3_fonts/3_fonts.ino#L126
+    lcd.setTextDatum(_align);
+    lcd.setTextColor(lcd.color888(_rf,_gf,_bf), lcd.color888(_rb,_gb,_bb));
+    lcd.drawString(_val, _x, _y);
+  }
+  
+} 
+
 void loop()
 {
   if(tick_update==true) {
     tick_update=false;
     getEncoder();
+    
+    if (Serial.available() > 0) {
+      String _lnin;
+      _lnin = Serial.readString(); // read the incoming byte:
+      parseDrawInput(_lnin);
+    }
   }
   GroupSelector.reDraw();
   propIntensity.reDraw();
