@@ -100,7 +100,39 @@ class eButton {
     }
 };
 
-String startupString = "
+String startupString[] = {  
+                            // Group Box
+                            "B000 000w320h054r046g046b046",
+                            "B010 010w300h034r079g079b079",
+                              //text
+                            "T160 016a1r255g255b255r079g079b079Apollo0189",
+                            "T030 016a0r255g255b255r079g079b079<",
+                            "T290 016a2r255g255b255r079g079b079>",
+
+                            //int
+                            "B010 064w300h040r046g046b046",
+                            "T030 074a0r255g213b046r046g046b046Intensity",
+                            "T290 074a2r079g079b079r046g046b046100%",
+                            
+                            //temp
+                            "B010 114w300h040r046g046b046",
+                            "T030 124a0r255g213b046r046g046b046Temperature",
+                            "T290 124a2r079g079b079r046g046b0465600K",
+
+                            //sat
+                            "B010 164w300h040r046g046b046",
+                            "T030 174a0r255g213b046r046g046b046Saturation",
+                            "T290 174a2r079g079b079r046g046b0460%",
+                            
+                            //hue
+                            "B010 214w300h040r046g046b046",
+                            "T030 224a0r255g213b046r046g046b046Hue",
+                            "T290 224a2r079g079b079r046g046b0460%"   
+                            };
+
+
+String mainProgramString[255];
+                            
 eButton GroupSelector(0,0,320,54,&lcd,"G","Apollo0189");
 eButton propIntensity(10,64,300,40,&lcd,"Intensity","80%");
 eButton propSaturation(10,114,300,40,&lcd,"Saturation","0%");
@@ -124,10 +156,18 @@ void setup(void)
   timerAlarmWrite(timer, 100000, true);
   timerAlarmEnable(timer);
   
-  Wire.begin(25,5);
   Serial.begin(115200);
+  Wire.begin(25,5);
   lcd.init();
   lcd.setColorDepth(24);
+  
+  Serial.print("Generating main program stack");
+  for(int i = 0;i<255;i++) {
+    mainProgramString[i] = String("");
+  }
+  Serial.print("program stack generated");
+  
+
 
   // Setting display to landscape
   //if (lcd.width() < lcd.height()) lcd.setRotation(lcd.getRotation() ^ 1);
@@ -146,6 +186,10 @@ void setup(void)
 
   getEncoder();
   prev_intensity_val = intensity_val;
+
+  for(int i = 0; i<17; i++) {
+    parseDrawInput(startupString[i]);
+  }
 
 }
 
@@ -202,6 +246,32 @@ void parseDrawInput(String _inputString) {
   // Some simple strings to operate
   // Clear Screen: B000 000w320h480r000g000b000
   // dark cyan horizontal stripe: B000 239w320h002r000g030b100
+  // text test: T160 016a1r255g255b255r079g079b079test
+  int newLineLoc = _inputString.indexOf('\n');
+  if(newLineLoc>0) {
+    parseDrawInput(_inputString.substring(0,newLineLoc));
+    return;
+  }
+  if(_inputString[0] == 'P') {
+    if(_inputString[1] == 's') {
+      Serial.println("stack size: "+String(sizeof(mainProgramString)));
+    }
+    if(_inputString[1] == 'w') {
+      int _offset = _inputString.substring(2,5).toInt();
+      String _data = _inputString.substring(5);
+      Serial.println("write to slot: "+String(_offset));
+      mainProgramString[_offset] = _data;
+    }
+    if(_inputString[1] == 'p') {
+      int _offset = _inputString.substring(2,5).toInt();
+      Serial.println("Contents of ["+String(_offset)+"] : "+String(mainProgramString[_offset]));
+    }
+    if(_inputString[1] == 'e') {
+      int _offset = _inputString.substring(2,5).toInt();
+      Serial.println("Executed ["+String(_offset)+"] : ");
+      parseDrawInput(String(mainProgramString[_offset]));
+    }
+  }
   
   if(_inputString[0] == 'B') {
     int _x,_y,_width, _height, _r, _g, _b;
@@ -216,7 +286,7 @@ void parseDrawInput(String _inputString) {
     
     lcd.fillRect(_x,_y,_width,_height,lcd.color888(_r,_g,_b));
   }
-    if(_inputString[0] == 'T') {
+  if(_inputString[0] == 'T') {
     int _x,_y,_align, _rf, _gf, _bf, _rb, _gb, _bb;
     String _val;
     _x = _inputString.substring(1,5).toInt();
@@ -231,6 +301,7 @@ void parseDrawInput(String _inputString) {
     _val = _inputString.substring(34);
     Serial.println("Draw Text:\n    x: "+String(_x)+" y: "+String(_y)+" align: "+String(_align)+" Fg Color: ("+String(_rf)+","+String(_gf)+","+String(_bf)+")  Bg Color: ("+String(_rb)+","+String(_gb)+","+String(_bb)+")");
 
+    lcd.setTextFont(4);
     //https://github.com/lovyan03/LovyanGFX/blob/5cfb85d2843ad13cea571af86154d26551991ca8/examples/HowToUse/3_fonts/3_fonts.ino#L126
     lcd.setTextDatum(_align);
     lcd.setTextColor(lcd.color888(_rf,_gf,_bf), lcd.color888(_rb,_gb,_bb));
@@ -251,14 +322,14 @@ void loop()
       parseDrawInput(_lnin);
     }
   }
-  GroupSelector.reDraw();
+  /*GroupSelector.reDraw();
   propIntensity.reDraw();
   propSaturation.reDraw();
   propHue.reDraw();
   propTemperature.reDraw();
   propFx.reDraw();
   propViewers.reDraw();
-  propButton.reDraw();
+  propButton.reDraw();*/
  // lcd.pushImage(0,0, 480, 320, img1_map);
 }
 
