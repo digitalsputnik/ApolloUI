@@ -8,6 +8,7 @@
 #include <FastLED.h>
 #include <Wire.h>
 
+#include <EEPROM.h>
 
 //led control
 #define NUM_LEDS 6
@@ -127,7 +128,16 @@ String startupString[] = {
                             //hue
                             "B010 214w300h040r046g046b046",
                             "T030 224a0r255g213b046r046g046b046Hue",
-                            "T290 224a2r079g079b079r046g046b0460%"   
+                            "T290 224a2r079g079b079r046g046b0460%",   
+
+                            //FX
+                            "B010 264w300h040r046g046b046",
+                            "T030 274a0r255g213b046r046g046b046Fx",
+                            "T290 274a2r079g079b079r046g046b040%",
+
+                            //Manage Viewers
+                            "B010 314w300h040r046g046b046",
+                            "T030 324a0r255g213b046r046g046b046Manage Viewers"
                             };
 
 
@@ -160,6 +170,10 @@ void setup(void)
   Wire.begin(25,5);
   lcd.init();
   lcd.setColorDepth(24);
+
+  if (!EEPROM.begin(64)) {
+    Serial.println("Failed to initialise EEPROM");
+  }
   
   Serial.print("Generating main program stack");
   for(int i = 0;i<255;i++) {
@@ -187,7 +201,7 @@ void setup(void)
   getEncoder();
   prev_intensity_val = intensity_val;
 
-  for(int i = 0; i<17; i++) {
+  for(int i = 0; i<22; i++) {
     parseDrawInput(startupString[i]);
   }
 
@@ -243,33 +257,70 @@ void getEncoder() {
 }
 
 void parseDrawInput(String _inputString) {
-  // Some simple strings to operate
-  // Clear Screen: B000 000w320h480r000g000b000
-  // dark cyan horizontal stripe: B000 239w320h002r000g030b100
-  // text test: T160 016a1r255g255b255r079g079b079test
-  int newLineLoc = _inputString.indexOf('\n');
-  if(newLineLoc>0) {
-    parseDrawInput(_inputString.substring(0,newLineLoc));
-    return;
-  }
+// Some simple strings to operate
+// Clear Screen: B000 000w320h480r000g000b000
+// dark cyan horizontal stripe: B000 239w320h002r000g030b100
+// text test: T160 016a1r255g255b255r079g079b079test
   if(_inputString[0] == 'P') {
+  // All program stack manipulation codes 
+  // Samples here:
+  // 
     if(_inputString[1] == 's') {
+    //stack size in bytes
       Serial.println("stack size: "+String(sizeof(mainProgramString)));
     }
     if(_inputString[1] == 'w') {
+    //write into stack
       int _offset = _inputString.substring(2,5).toInt();
       String _data = _inputString.substring(5);
       Serial.println("write to slot: "+String(_offset));
       mainProgramString[_offset] = _data;
     }
     if(_inputString[1] == 'p') {
+    //print contents of the specified memory location
       int _offset = _inputString.substring(2,5).toInt();
       Serial.println("Contents of ["+String(_offset)+"] : "+String(mainProgramString[_offset]));
     }
     if(_inputString[1] == 'e') {
+    //execute all commands in the specified memory location
+      //execute current command line
       int _offset = _inputString.substring(2,5).toInt();
-      Serial.println("Executed ["+String(_offset)+"] : ");
-      parseDrawInput(String(mainProgramString[_offset]));
+      //add all commands sepprated by ;
+      String stillToBeExecuted = mainProgramString[_offset];
+      int pos = stillToBeExecuted.indexOf(';');
+      
+      if(pos>0) {
+        while(1) {
+          pos = stillToBeExecuted.indexOf(';');
+          if(pos > 0) {
+            String toExec = stillToBeExecuted.substring(0,pos);
+            stillToBeExecuted = stillToBeExecuted.substring(pos+1);
+            Serial.println("Executed ["+String(_offset)+"]["+String(pos)+"] : "+toExec);
+            parseDrawInput(toExec);    
+          } else {
+            Serial.println("Executed ["+String(_offset)+"][-1] : "+stillToBeExecuted);
+            parseDrawInput(stillToBeExecuted);
+            break;
+          }
+        
+        }
+      }
+      else {
+        Serial.println("Executed ["+String(_offset)+"] : ");
+        parseDrawInput(stillToBeExecuted);
+      }
+    }
+    if(_inputString[1] == 'x') {
+      
+      Serial.println("Main stack stored in flash ['/screen001.sc']");
+      EEPROM.writeString(0, mainProgramString[1]);
+      
+    }
+    if(_inputString[1] == 'r') {
+
+      Serial.println("Started Reading");
+      Serial.println(EEPROM.readString(0));
+      
     }
   }
   
