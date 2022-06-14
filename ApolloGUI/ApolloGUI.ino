@@ -10,6 +10,9 @@
 
 #include <EEPROM.h>
 
+#include <WiFi.h>
+#include "AsyncUDP.h"
+
 //led control
 #define NUM_LEDS 6
 #define LED_DATA_PIN 4
@@ -21,7 +24,7 @@ hw_timer_t * timer = NULL;
 
 // Define the array of leds
 CRGB leds[NUM_LEDS];
-
+AsyncUDP udp;
 
 
 int count=0;
@@ -35,126 +38,49 @@ int intensity_val, prev_intensity_val;
 
 //Adafruit_Image img;
 
-class eButton {
-  private:
-    int Xpos,Ypos,Width,Height;
-    LGFX *_lcd_ptr;
-    
-    String Type, Val;
-  public:
-    bool _update = true;
-    eButton(int _x, int _y, int _width, int _height, LGFX *_inLcd, String _type, String _val) {
-      Xpos = _x;
-      Ypos = _y;
-      Width = _width;
-      Height = _height;
-      _lcd_ptr = _inLcd;
-      Type = _type;
-      Val = _val;
-      
-      }
-    void reDraw() {
-      if(_update==true) {
-        //_lcd_ptr->fillRect(this->_Xpos,this->_Ypos,this->_Height,this->_Width,_lcd_ptr->color888(100,100,100));
-        lcd.setTextFont(4);
-   
-        
-        
-        if(Type == "G") {
-          lcd.fillRect(Xpos,Ypos,Width,Height,_lcd_ptr->color888(46,46,46));
-          lcd.fillRect(Xpos+10,Ypos+10,Width-20,Height-20,_lcd_ptr->color888(79,79,79));
-       
-        
-          lcd.setTextDatum(textdatum_t::top_center);
-          lcd.setTextColor(_lcd_ptr->color888(255,255,255), _lcd_ptr->color888(79,79,79));
-          lcd.drawString(Val, 160, Ypos+16);
-          lcd.setTextDatum(textdatum_t::top_left);
-          lcd.setTextColor(_lcd_ptr->color888(255,213,46), _lcd_ptr->color888(79,79,79));
-          lcd.drawString("<", 30, Ypos+16);
-          lcd.setTextDatum(textdatum_t::top_right);
-          lcd.drawString(">", 290, Ypos+16);
-        }
-        else if (Type == "B") {
-          lcd.fillRect(Xpos,Ypos,Width,Height,_lcd_ptr->color888(46,46,46));
-
-          lcd.setTextDatum(textdatum_t::top_center);
-          lcd.setTextColor(_lcd_ptr->color888(255,213,46), _lcd_ptr->color888(46,46,46));
-          lcd.drawString(Val, 235, Ypos+10);
-        }
-        else {
-          lcd.fillRect(Xpos,Ypos,Width,Height,_lcd_ptr->color888(46,46,46));
-        
-          lcd.setTextDatum(textdatum_t::top_left);
-          lcd.setTextColor(_lcd_ptr->color888(255,213,46), _lcd_ptr->color888(46,46,46));
-          lcd.drawString(Type, 30, Ypos+10);
-          lcd.setTextDatum(textdatum_t::top_right);
-          lcd.setTextColor(_lcd_ptr->color888(79,79,79), _lcd_ptr->color888(46,46,46));
-          if(Type == "Intensity") {
-            lcd.drawString(String(intensity_val)+"%", 290, Ypos+10);
-          }
-          else {
-            lcd.drawString(Val, 290, Ypos+10);          
-          }
-        }
-        _update=false;
-      }
-    }
-};
-
 String startupString[] = {  
                             // Group Box
                             "B000 000w320h054r046g046b046",
                             "B010 010w300h034r079g079b079",
                               //text
-                            "T160 016a1r255g255b255r079g079b079Apollo0189",
-                            "T030 016a0r255g255b255r079g079b079<",
-                            "T290 016a2r255g255b255r079g079b079>",
+                            "T160 016a1f4r255g255b255r079g079b079Apollo0189",
+                            "T030 016a0f4r255g255b255r079g079b079<",
+                            "T290 016a2f4r255g255b255r079g079b079>",
 
                             //int
                             "B010 064w300h040r046g046b046",
-                            "T030 074a0r255g213b046r046g046b046Intensity",
-                            "T290 074a2r079g079b079r046g046b046100%",
+                            "T030 074a0f4r255g213b046r046g046b046Intensity",
+                            "T290 074a2f4r079g079b079r046g046b046100%",
                             
                             //temp
                             "B010 114w300h040r046g046b046",
-                            "T030 124a0r255g213b046r046g046b046Temperature",
-                            "T290 124a2r079g079b079r046g046b0465600K",
+                            "T030 124a0f4r255g213b046r046g046b046Temperature",
+                            "T290 124a2f4r079g079b079r046g046b0465600K",
 
                             //sat
                             "B010 164w300h040r046g046b046",
-                            "T030 174a0r255g213b046r046g046b046Saturation",
-                            "T290 174a2r079g079b079r046g046b0460%",
+                            "T030 174a0f4r255g213b046r046g046b046Saturation",
+                            "T290 174a2f4r079g079b079r046g046b0460%",
                             
                             //hue
                             "B010 214w300h040r046g046b046",
-                            "T030 224a0r255g213b046r046g046b046Hue",
-                            "T290 224a2r079g079b079r046g046b0460%",   
+                            "T030 224a0f4r255g213b046r046g046b046Hue",
+                            "T290 224a2f4r079g079b079r046g046b0460%",   
 
                             //FX
                             "B010 264w300h040r046g046b046",
-                            "T030 274a0r255g213b046r046g046b046Fx",
-                            "T290 274a2r079g079b079r046g046b040%",
+                            "T030 274a0f4r255g213b046r046g046b046Fx",
+                            "T290 274a2f4r079g079b079r046g046b040%",
 
                             //Manage Viewers
                             "B010 314w300h040r046g046b046",
-                            "T030 324a0r255g213b046r046g046b046Manage Viewers"
+                            "T030 324a0f4r255g213b046r046g046b046Manage Viewers"
                             };
 
 
 String mainProgramString[255];
-                            
-eButton GroupSelector(0,0,320,54,&lcd,"G","Apollo0189");
-eButton propIntensity(10,64,300,40,&lcd,"Intensity","80%");
-eButton propSaturation(10,114,300,40,&lcd,"Saturation","0%");
-eButton propHue(10,164,300,40,&lcd,"Hue","0%");
-eButton propTemperature(10,214,300,40,&lcd,"Temperature","5600K");
-eButton propFx(10,264,300,40,&lcd,"Fx","0%");
-eButton propViewers(10,314,300,40,&lcd,"Manage viewers","");
-eButton propButton(160,430,150,40,&lcd,"B","Setup");
 
-
-
-void tick5ms() {
+void tick10ms() {
   tick_update=true;
   }
 
@@ -162,7 +88,7 @@ void setup(void)
 {
     
   timer = timerBegin(0, 80, true);
-  timerAttachInterrupt(timer, &tick5ms, true);
+  timerAttachInterrupt(timer, &tick10ms, true);
   timerAlarmWrite(timer, 100000, true);
   timerAlarmEnable(timer);
   
@@ -171,7 +97,7 @@ void setup(void)
   lcd.init();
   lcd.setColorDepth(24);
 
-  if (!EEPROM.begin(64)) {
+  if (!EEPROM.begin(255)) {
     Serial.println("Failed to initialise EEPROM");
   }
   
@@ -201,10 +127,21 @@ void setup(void)
   getEncoder();
   prev_intensity_val = intensity_val;
 
-  for(int i = 0; i<22; i++) {
-    parseDrawInput(startupString[i]);
-  }
+  initWiFi();
 
+}
+
+void initWiFi() {
+  WiFi.mode(WIFI_STA);
+  WiFi.begin("DS","SputnikulOn4Antenni");
+  Serial.print("Connecting to WiFi ..");
+  parseDrawInput("B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000Connecting to WiFi ...");
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print('.');
+    delay(1000);
+  }
+  Serial.println(WiFi.localIP());
+  parseDrawInput("B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000"+WiFi.localIP());
 }
 
 void i2cScan() {
@@ -251,8 +188,8 @@ void getEncoder() {
   intensity_val = (signed short int)((data[0]) | (data[1]) << 8);
 
   if(prev_intensity_val!=intensity_val) {
-    propIntensity._update=true;
-    prev_intensity_val=intensity_val;
+    //propIntensity._update=true;
+    //prev_intensity_val=intensity_val;
   }
 }
 
@@ -260,7 +197,12 @@ void parseDrawInput(String _inputString) {
 // Some simple strings to operate
 // Clear Screen: B000 000w320h480r000g000b000
 // dark cyan horizontal stripe: B000 239w320h002r000g030b100
-// text test: T160 016a1r255g255b255r079g079b079test
+// text test: T160 016a1f4r255g255b255r079g079b079test
+  // fix if the string starts with newline
+  if(_inputString[0] == '\n') {
+    _inputString == _inputString.substring(1);
+  }
+
   if(_inputString[0] == 'P') {
   // All program stack manipulation codes 
   // Samples here:
@@ -275,6 +217,8 @@ void parseDrawInput(String _inputString) {
       String _data = _inputString.substring(5);
       Serial.println("write to slot: "+String(_offset));
       mainProgramString[_offset] = _data;
+      // write non volatile memory as well
+      EEPROM.writeString(_offset, _data);
     }
     if(_inputString[1] == 'p') {
     //print contents of the specified memory location
@@ -310,12 +254,6 @@ void parseDrawInput(String _inputString) {
         parseDrawInput(stillToBeExecuted);
       }
     }
-    if(_inputString[1] == 'x') {
-      
-      Serial.println("Main stack stored in flash ['/screen001.sc']");
-      EEPROM.writeString(0, mainProgramString[1]);
-      
-    }
     if(_inputString[1] == 'r') {
 
       Serial.println("Started Reading");
@@ -338,21 +276,22 @@ void parseDrawInput(String _inputString) {
     lcd.fillRect(_x,_y,_width,_height,lcd.color888(_r,_g,_b));
   }
   if(_inputString[0] == 'T') {
-    int _x,_y,_align, _rf, _gf, _bf, _rb, _gb, _bb;
+    int _x,_y,_align, _font, _rf, _gf, _bf, _rb, _gb, _bb;
     String _val;
     _x = _inputString.substring(1,5).toInt();
     _y = _inputString.substring(5,9).toInt();
     _align = _inputString.substring(9,11).toInt();
-    _rf = _inputString.substring(11,15).toInt();
-    _gf = _inputString.substring(15,19).toInt();
-    _bf = _inputString.substring(19,23).toInt();
-    _rb = _inputString.substring(23,27).toInt();
-    _gb = _inputString.substring(27,31).toInt();
-    _bb = _inputString.substring(31,34).toInt();
-    _val = _inputString.substring(34);
-    Serial.println("Draw Text:\n    x: "+String(_x)+" y: "+String(_y)+" align: "+String(_align)+" Fg Color: ("+String(_rf)+","+String(_gf)+","+String(_bf)+")  Bg Color: ("+String(_rb)+","+String(_gb)+","+String(_bb)+")");
+    _font = _inputString.substring(11,13).toInt();
+    _rf = _inputString.substring(13,17).toInt();
+    _gf = _inputString.substring(17,21).toInt();
+    _bf = _inputString.substring(21,25).toInt();
+    _rb = _inputString.substring(25,29).toInt();
+    _gb = _inputString.substring(29,33).toInt();
+    _bb = _inputString.substring(33,36).toInt();
+    _val = _inputString.substring(36);
+    Serial.println("Draw Text:\n    x: "+String(_x)+" y: "+String(_y)+" align: "+String(_align)+" Font: "+String(_font)+" Fg Color: ("+String(_rf)+","+String(_gf)+","+String(_bf)+")  Bg Color: ("+String(_rb)+","+String(_gb)+","+String(_bb)+")");
 
-    lcd.setTextFont(4);
+    lcd.setTextFont(_font);
     //https://github.com/lovyan03/LovyanGFX/blob/5cfb85d2843ad13cea571af86154d26551991ca8/examples/HowToUse/3_fonts/3_fonts.ino#L126
     lcd.setTextDatum(_align);
     lcd.setTextColor(lcd.color888(_rf,_gf,_bf), lcd.color888(_rb,_gb,_bb));
@@ -372,6 +311,15 @@ void loop()
       _lnin = Serial.readString(); // read the incoming byte:
       parseDrawInput(_lnin);
     }
+
+    if(udp.listen(6454)) {
+      udp.onPacket([](AsyncUDPPacket packet) {
+        Serial.write(packet.data(),packet.length());
+        parseDrawInput(String((const char*)packet.data() ));
+      });
+    }
+
+    
   }
   /*GroupSelector.reDraw();
   propIntensity.reDraw();
