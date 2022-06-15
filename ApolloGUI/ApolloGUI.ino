@@ -28,7 +28,7 @@ AsyncUDP udp;
 
 
 int count=0;
-bool state=0;
+bool state=0, chk_wifi=true;
 // Variables for touch x,y
 static int32_t x,y;
 int X,Y;
@@ -135,13 +135,9 @@ void initWiFi() {
   WiFi.mode(WIFI_STA);
   WiFi.begin("DS","SputnikulOn4Antenni");
   Serial.print("Connecting to WiFi ..");
-  parseDrawInput("B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000Connecting to WiFi ...");
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print('.');
-    delay(1000);
-  }
-  Serial.println(WiFi.localIP());
-  parseDrawInput("B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000"+WiFi.localIP());
+  parseDrawInput("Pw255B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000Connecting to WiFi ...");
+  parseDrawInput("Pe255");
+  chk_wifi=true;
 }
 
 void i2cScan() {
@@ -304,6 +300,28 @@ Serial.println("2nd chr: "+String(int(_inputString2[1])));
     lcd.setTextColor(lcd.color888(_rf,_gf,_bf), lcd.color888(_rb,_gb,_bb));
     lcd.drawString(_val, _x, _y);
   }
+  if(_inputString[0] == 'x') {
+    if(_inputString[1] == '1') {
+        parseDrawInput("Pw255B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000chk_wifi: "+String(chk_wifi));
+        parseDrawInput("Pe255");
+    }
+    if(_inputString[1] == '2') {
+        parseDrawInput("Pw255B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000WL_CONNECTED: "+String(WL_CONNECTED)+":"+String(WiFi.status()));
+        parseDrawInput("Pe255");
+    }
+    if(_inputString[1] == '3') {
+        String _local_ip = WiFi.localIP().toString();
+        Serial.println(_local_ip);
+        //parseDrawInput("Pw255B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000IP: "+WiFi.localIP().toString());
+        //parseDrawInput("Pe255");
+    }
+    if(_inputString[1] == '4') {
+        parseDrawInput("Pw255B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000false: "+String(false) + " true: "+String(true));
+        parseDrawInput("Pe255");
+        chk_wifi=true;
+    }
+    
+  }
   
 } 
 
@@ -327,7 +345,13 @@ void loop()
       });
     }
 
-    
+    if(chk_wifi==true) {
+      if (WiFi.status() == WL_CONNECTED) {
+        parseDrawInput("Pw255B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000"+WiFi.localIP().toString());
+        parseDrawInput("Pe255");
+        chk_wifi = false;
+      }
+    }
   }
   /*GroupSelector.reDraw();
   propIntensity.reDraw();
