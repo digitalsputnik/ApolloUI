@@ -193,14 +193,21 @@ void getEncoder() {
   }
 }
 
-void parseDrawInput(String _inputString) {
+void parseDrawInput(String _inputString2) {
 // Some simple strings to operate
 // Clear Screen: B000 000w320h480r000g000b000
 // dark cyan horizontal stripe: B000 239w320h002r000g030b100
 // text test: T160 016a1f4r255g255b255r079g079b079test
+Serial.println("1st chr: "+String(int(_inputString2[0])));
+Serial.println("2nd chr: "+String(int(_inputString2[1])));
   // fix if the string starts with newline
-  if(_inputString[0] == '\n') {
-    _inputString == _inputString.substring(1);
+  String _inputString;
+  if(_inputString2[0] == '\n' or _inputString2[0] == 0) {
+    _inputString = _inputString2.substring(1);
+    Serial.println("Newline Fix executed: "+_inputString);
+  }
+  else {
+    _inputString = _inputString2;
   }
 
   if(_inputString[0] == 'P') {
@@ -314,8 +321,9 @@ void loop()
 
     if(udp.listen(6454)) {
       udp.onPacket([](AsyncUDPPacket packet) {
-        Serial.write(packet.data(),packet.length());
-        parseDrawInput(String((const char*)packet.data() ));
+        //Serial.write(packet.data(),packet.length());
+        String _data = (const char*)packet.data();
+        parseDrawInput(_data);
       });
     }
 
