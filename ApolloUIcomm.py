@@ -1,6 +1,6 @@
 import socket
 
-UDP_IP = "192.168.1.248"
+UDP_IP = "192.168.1.101"
 UDP_PORT = 6454
 
 msg = """
@@ -25,7 +25,44 @@ B010y264w300h040r046g046b046;
 T030y274a0f4r255g213b046r046g046b046Fx;
 T290y274a2f4r079g079b079r046g046b040%;
 B010y314w300h040r046g046b046;
-T030y324a0f4r255g213b046r046g046b046Manage Viewers;"""
+T030y324a0f4r255g213b046r046g046b046Manage Viewers;
+"""
+
+"""
+//Intensity On
+Pw129B200y064w090h040r046g046b046;T290y074a2f4r079g079b079r046g046b046;
+Pw016Pc064065;Pm129065o013c013;Pe064;
+R010y064w300h040r255g213b046;
+
+//Intensity Off
+Pw016y;R010y064w300h040r046g046b046;
+
+//Temperature On
+Pw130B200y115w090h038r046g046b046;T290y124a2f4r079g079b079r046g046b046
+Pw016Pc064066;Pm130066o013c013;Pe064;
+R010y114w300h040r255g213b046;
+
+//Temperature Off
+Pw016y;R010y114w300h040r046g046b046;
+
+"""
+
+cmd_inte_on = ['Pw129B200y065w090h038r046g046b046;T290y074a2f4r079g079b079r046g046b046%',
+               'x5001',
+               'x6',
+               'Pw016x7065;Pm129065o001;Pe064',
+               'R010y064w300h040r255g213b046']
+
+cmd_inte_off = ['Pw016y','R010y064w300h040r046g046b046']
+
+
+cmd_temp_on = ['Pw130B200y115w090h038r046g046b046;T290y124a2f4r079g079b079r046g046b046K',
+               'x5100',
+               'Pw016x7066;Pm130066o001;Pe064',
+               'R010y114w300h040r255g213b046']
+
+cmd_temp_off = ['Pw016y','R010y114w300h040r046g046b046']
+
 
 def mysend(msg = ""):
     print("UDP target IP:", UDP_IP)
@@ -35,5 +72,9 @@ def mysend(msg = ""):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP
     sock.sendto(bytes(msg, "utf-8"), (UDP_IP, UDP_PORT))
     
-mysend("Pw001"+msg)
-mysend("Pe001")
+#mysend("Pw001"+msg)
+#mysend("Pe001")
+def execall(inputlist):
+    for cmd in inputlist:
+        mysend(cmd)
+    

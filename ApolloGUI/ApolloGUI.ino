@@ -8,7 +8,7 @@
 #include <FastLED.h>
 #include <Wire.h>
 
-#include <EEPROM.h>
+#include <Preferences.h>
 
 #include <WiFi.h>
 #include "AsyncUDP.h"
@@ -25,16 +25,17 @@ hw_timer_t * timer = NULL;
 // Define the array of leds
 CRGB leds[NUM_LEDS];
 AsyncUDP udp;
+Preferences preferences;
 
 
-int count=0;
+int count=0, node_events=0, encoder_offset=0, encoder_multplyer=1;
 bool state=0, chk_wifi=true;
 // Variables for touch x,y
 static int32_t x,y;
 int X,Y;
 
 volatile bool tick_update=false;
-int intensity_val, prev_intensity_val;
+int encoder_val, prev_encoder_val;
 
 //Adafruit_Image img;
 
@@ -97,9 +98,7 @@ void setup(void)
   lcd.init();
   lcd.setColorDepth(24);
 
-  if (!EEPROM.begin(255)) {
-    Serial.println("Failed to initialise EEPROM");
-  }
+  preferences.begin("ApolloNode", false);
   
   Serial.print("Generating main program stack");
   for(int i = 0;i<255;i++) {
@@ -125,9 +124,12 @@ void setup(void)
   //i2cScan();
 
   getEncoder();
-  prev_intensity_val = intensity_val;
+  prev_encoder_val = encoder_val;
 
   initWiFi();
+
+  parseDrawInput("Pr000");
+  parseDrawInput("Pe000");
 
 }
 
@@ -181,12 +183,19 @@ void getEncoder() {
     data[i] = Wire.read();
   }
 
-  intensity_val = (signed short int)((data[0]) | (data[1]) << 8);
+  encoder_val = (signed short int)((data[0]) | (data[1]) << 8);
 
-  if(prev_intensity_val!=intensity_val) {
-    //propIntensity._update=true;
-    //prev_intensity_val=intensity_val;
+  if(prev_encoder_val!=encoder_val) {
+    //if(node_events && 0x1) {
+      node_events = node_events | 0x1;
+      //parseDrawInput("Pw064"+String(encoder_val/encoder_multplyer+encoder_offset));
+      prev_encoder_val=encoder_val;
+    //}
   }
+}
+
+String lastreg() {
+  return mainProgramString[64];
 }
 
 void parseDrawInput(String _inputString2) {
@@ -194,13 +203,16 @@ void parseDrawInput(String _inputString2) {
 // Clear Screen: B000 000w320h480r000g000b000
 // dark cyan horizontal stripe: B000 239w320h002r000g030b100
 // text test: T160 016a1f4r255g255b255r079g079b079test
-Serial.println("1st chr: "+String(int(_inputString2[0])));
-Serial.println("2nd chr: "+String(int(_inputString2[1])));
+//Serial.println("1st chr: "+String(int(_inputString2[0])));
+//Serial.println("2nd chr: "+String(int(_inputString2[1])));
   // fix if the string starts with newline
+  // TODO: push the whitespace removal in to save functionality NB! Spaces and newlines in data strings must be preservered
   String _inputString;
+  
   if(_inputString2[0] == '\n' or _inputString2[0] == 0) {
     _inputString = _inputString2.substring(1);
     Serial.println("Newline Fix executed: "+_inputString);
+
   }
   else {
     _inputString = _inputString2;
@@ -217,16 +229,53 @@ Serial.println("2nd chr: "+String(int(_inputString2[1])));
     if(_inputString[1] == 'w') {
     //write into stack
       int _offset = _inputString.substring(2,5).toInt();
-      String _data = _inputString.substring(5);
+      // cut out tailing new line from prompt entry
+      String _data;
+      if(_inputString[_inputString.length()] == '/n') {
+        _data = _inputString.substring(5,_inputString.length()-1);
+      }
+      else {
+        _data = _inputString.substring(5);
+      }
+      Serial.println("last char: "+_inputString[_inputString.length()-1]);
       Serial.println("write to slot: "+String(_offset));
       mainProgramString[_offset] = _data;
       // write non volatile memory as well
-      EEPROM.writeString(_offset, _data);
+      char _offsetString[3];
+      itoa(_offset, _offsetString, 10);
+      preferences.putString(_offsetString, _data);
     }
     if(_inputString[1] == 'p') {
     //print contents of the specified memory location
       int _offset = _inputString.substring(2,5).toInt();
       Serial.println("Contents of ["+String(_offset)+"] : "+String(mainProgramString[_offset]));
+    }
+    if(_inputString[1] == 'r') {
+    //read data from EEPROM
+      int _offset = _inputString.substring(2,5).toInt();
+      char _offsetString[3];
+      itoa(_offset, _offsetString, 10);      
+      Serial.println("read slot: "+String(_offset));
+      mainProgramString[_offset] = preferences.getString(_offsetString,"");
+    }
+    if(_inputString[1] == 'm') {
+    //merge 2 strings slot1base slot2insert offset char_count
+      int _slot1base = _inputString.substring(2,5).toInt();
+      int _slot2insert = _inputString.substring(5,9).toInt();
+      int _offset = _inputString.substring(9,13).toInt();
+      int _count = mainProgramString[_slot1base].length()-_offset;
+      
+      Serial.println("Copy ["+String(_slot1base)+"] -> ["+String(_slot2insert)+"] with offset: "+String(_count));
+      parseDrawInput("Pw064"+mainProgramString[_slot1base].substring(0,_count)+mainProgramString[_slot2insert]+mainProgramString[_slot1base].substring(_count));    
+      
+    }
+    if(_inputString[1] == 'c') {
+    //copy one slot to another slot2insert offset char_count
+      int _slot1from = _inputString.substring(2,5).toInt();
+      int _slot2to = _inputString.substring(5,9).toInt();
+
+      mainProgramString[_slot2to] = mainProgramString[_slot1from];
+      
     }
     if(_inputString[1] == 'e') {
     //execute all commands in the specified memory location
@@ -257,12 +306,6 @@ Serial.println("2nd chr: "+String(int(_inputString2[1])));
         parseDrawInput(stillToBeExecuted);
       }
     }
-    if(_inputString[1] == 'r') {
-
-      Serial.println("Started Reading");
-      Serial.println(EEPROM.readString(0));
-      
-    }
   }
   
   if(_inputString[0] == 'B') {
@@ -277,6 +320,19 @@ Serial.println("2nd chr: "+String(int(_inputString2[1])));
     Serial.println("Draw Box:\n    x: "+String(_x)+" y: "+String(_y)+" width: "+String(_width)+" height: "+String(_height)+ " Color: ("+String(_r)+","+String(_g)+","+String(_b)+")");
     
     lcd.fillRect(_x,_y,_width,_height,lcd.color888(_r,_g,_b));
+  }
+  if(_inputString[0] == 'R') {
+    int _x,_y,_width, _height, _r, _g, _b;
+    _x = _inputString.substring(1,5).toInt();
+    _y = _inputString.substring(5,9).toInt();
+    _width = _inputString.substring(9,13).toInt();
+    _height = _inputString.substring(13,17).toInt();
+    _r = _inputString.substring(17,21).toInt();
+    _g = _inputString.substring(21,25).toInt();
+    _b = _inputString.substring(25,29).toInt();
+    Serial.println("Draw Rectangle:\n    x: "+String(_x)+" y: "+String(_y)+" width: "+String(_width)+" height: "+String(_height)+ " Color: ("+String(_r)+","+String(_g)+","+String(_b)+")");
+    
+    lcd.drawRect(_x,_y,_width,_height,lcd.color888(_r,_g,_b));
   }
   if(_inputString[0] == 'T') {
     int _x,_y,_align, _font, _rf, _gf, _bf, _rb, _gb, _bb;
@@ -320,7 +376,33 @@ Serial.println("2nd chr: "+String(int(_inputString2[1])));
         parseDrawInput("Pe255");
         chk_wifi=true;
     }
+    if(_inputString[1] == '5') {
+        int _multiplyer = _inputString.substring(2,5).toInt();
+        encoder_multplyer = _multiplyer;
+    }
+    if(_inputString[1] == '6') {
+        int _offset = _inputString.substring(2,5).toInt();
+        int _prev_val = mainProgramString[_offset].toInt();
+        encoder_offset = (_prev_val/encoder_multplyer)-(encoder_val/encoder_multplyer);
+    }
+    if(_inputString[1] == '7') {
+        int _offset = _inputString.substring(2,5).toInt();
+        int _prev_val = mainProgramString[_offset].toInt();
+        String _calculated_value = String(encoder_val/encoder_multplyer+encoder_offset);
+        mainProgramString[_offset] = _calculated_value;
+        Serial.println("Caculated encoder value to: "+String(_calculated_value) + " -> " + String(_offset)+ " from: "+String(_prev_val));
+    }
+    if(_inputString[1] == '8') {
+        Serial.println("Encoder: "+String(encoder_val)+"/"+String(encoder_multplyer)+"/"+String(encoder_offset));
+    }
     
+    if(_inputString[1] == 'x') {
+        ESP.restart();
+    }
+    
+  }
+  if(_inputString.substring(0,9) == "stringbuf") {
+    Serial.println("last string: "+lastreg());
   }
   
 } 
@@ -351,6 +433,14 @@ void loop()
         parseDrawInput("Pe255");
         chk_wifi = false;
       }
+    }
+    if(node_events != 0x0) {
+      // every event gets consecutive byte so it would be possible to register more than one event, all bytes get reset after handeling
+      if(node_events && 0x1) {
+        //encoder event
+        parseDrawInput("Pe016");
+      }
+      node_events = 0;
     }
   }
   /*GroupSelector.reDraw();
