@@ -7,6 +7,7 @@
 #include <LovyanGFX.hpp>    // main library
 #include <FastLED.h>
 #include <Wire.h>
+#include <WireSlave.h>
 
 #include <Preferences.h>
 
@@ -21,6 +22,7 @@ static LGFX lcd;            // declare display variable
 
 hw_timer_t * timer = NULL;
 
+TwoWire i2c_p1 = TwoWire(0);
 
 // Define the array of leds
 CRGB leds[NUM_LEDS];
@@ -28,7 +30,7 @@ AsyncUDP udp;
 Preferences preferences;
 
 
-int count=0, node_events=0, encoder_offset=0, encoder_multplyer=1;
+int count=0, node_events=0, encoder_offset=0, encoder_multplyer=1, encoder_min=0, encoder_max=100;
 bool state=0, chk_wifi=true;
 // Variables for touch x,y
 static int32_t x,y;
@@ -94,7 +96,9 @@ void setup(void)
   timerAlarmEnable(timer);
   
   Serial.begin(115200);
-  Wire.begin(25,5);
+  Wire1.begin(25,5);
+  WireSlave.begin(18, 19, 10);
+  WireSlave.onRequest(I2CrequestEvent);
   lcd.init();
   lcd.setColorDepth(24);
 
@@ -128,17 +132,23 @@ void setup(void)
 
   initWiFi();
 
-  parseDrawInput("Pr000");
-  parseDrawInput("Pe000");
+  parseDrawActionString("Pr000");
+  parseDrawActionString("Pe000");
 
 }
 
+void I2CrequestEvent() {
+  WireSlave.write('a');
+  //WireSlave.write(0x33);
+  Serial.println("I2C Event");
+  }
+
 void initWiFi() {
+  parseDrawActionString("Pw255B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000Connecting to WiFi ...");
   WiFi.mode(WIFI_STA);
   WiFi.begin("DS","SputnikulOn4Antenni");
   Serial.print("Connecting to WiFi ..");
-  parseDrawInput("Pw255B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000Connecting to WiFi ...");
-  parseDrawInput("Pe255");
+  parseDrawActionString("Pe255");
   chk_wifi=true;
 }
 
@@ -148,8 +158,8 @@ void i2cScan() {
   Serial.println("Scanning...");
   nDevices = 0;
   for(address = 1; address < 127; address++ ) {
-    Wire.beginTransmission(address);
-    error = Wire.endTransmission();
+    Wire1.beginTransmission(address);
+    error = Wire1.endTransmission();
     if (error == 0) {
       Serial.print("I2C device found at address 0x");
       if (address<16) {
@@ -173,14 +183,14 @@ void i2cScan() {
 void getEncoder() {
   //connect to encoder
   uint8_t data[2];
-  Wire.beginTransmission(0x40);
-  Wire.write(0x10);
-  Wire.endTransmission();
+  Wire1.beginTransmission(0x40);
+  Wire1.write(0x10);
+  Wire1.endTransmission();
 
   //read encoder value
-  Wire.requestFrom(0x40, 2);
+  Wire1.requestFrom(0x40, 2);
   for (int i = 0; i<2; i++) {
-    data[i] = Wire.read();
+    data[i] = Wire1.read();
   }
 
   encoder_val = (signed short int)((data[0]) | (data[1]) << 8);
@@ -188,17 +198,13 @@ void getEncoder() {
   if(prev_encoder_val!=encoder_val) {
     //if(node_events && 0x1) {
       node_events = node_events | 0x1;
-      //parseDrawInput("Pw064"+String(encoder_val/encoder_multplyer+encoder_offset));
+      //parseDrawActionString("Pw064"+String(encoder_val/encoder_multplyer+encoder_offset));
       prev_encoder_val=encoder_val;
     //}
   }
 }
 
-String lastreg() {
-  return mainProgramString[64];
-}
-
-void parseDrawInput(String _inputString2) {
+void parseDrawActionString(String _inputString2) {
 // Some simple strings to operate
 // Clear Screen: B000 000w320h480r000g000b000
 // dark cyan horizontal stripe: B000 239w320h002r000g030b100
@@ -237,7 +243,7 @@ void parseDrawInput(String _inputString2) {
       else {
         _data = _inputString.substring(5);
       }
-      Serial.println("last char: "+_inputString[_inputString.length()-1]);
+      Serial.println("last char: "+String(_inputString[_inputString.length()-1]));
       Serial.println("write to slot: "+String(_offset));
       mainProgramString[_offset] = _data;
       // write non volatile memory as well
@@ -266,7 +272,7 @@ void parseDrawInput(String _inputString2) {
       int _count = mainProgramString[_slot1base].length()-_offset;
       
       Serial.println("Copy ["+String(_slot1base)+"] -> ["+String(_slot2insert)+"] with offset: "+String(_count));
-      parseDrawInput("Pw064"+mainProgramString[_slot1base].substring(0,_count)+mainProgramString[_slot2insert]+mainProgramString[_slot1base].substring(_count));    
+      parseDrawActionString("Pw064"+mainProgramString[_slot1base].substring(0,_count)+mainProgramString[_slot2insert]+mainProgramString[_slot1base].substring(_count));    
       
     }
     if(_inputString[1] == 'c') {
@@ -292,10 +298,10 @@ void parseDrawInput(String _inputString2) {
             String toExec = stillToBeExecuted.substring(0,pos);
             stillToBeExecuted = stillToBeExecuted.substring(pos+1);
             Serial.println("Executed ["+String(_offset)+"]["+String(pos)+"] : "+toExec);
-            parseDrawInput(toExec);    
+            parseDrawActionString(toExec);    
           } else {
             Serial.println("Executed ["+String(_offset)+"][-1] : "+stillToBeExecuted);
-            parseDrawInput(stillToBeExecuted);
+            parseDrawActionString(stillToBeExecuted);
             break;
           }
         
@@ -303,7 +309,7 @@ void parseDrawInput(String _inputString2) {
       }
       else {
         Serial.println("Executed ["+String(_offset)+"] : ");
-        parseDrawInput(stillToBeExecuted);
+        parseDrawActionString(stillToBeExecuted);
       }
     }
   }
@@ -358,37 +364,40 @@ void parseDrawInput(String _inputString2) {
   }
   if(_inputString[0] == 'x') {
     if(_inputString[1] == '1') {
-        parseDrawInput("Pw255B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000chk_wifi: "+String(chk_wifi));
-        parseDrawInput("Pe255");
+        parseDrawActionString("Pw255B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000chk_wifi: "+String(chk_wifi));
+        parseDrawActionString("Pe255");
     }
     if(_inputString[1] == '2') {
-        parseDrawInput("Pw255B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000WL_CONNECTED: "+String(WL_CONNECTED)+":"+String(WiFi.status()));
-        parseDrawInput("Pe255");
+        parseDrawActionString("Pw255B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000WL_CONNECTED: "+String(WL_CONNECTED)+":"+String(WiFi.status()));
+        parseDrawActionString("Pe255");
     }
     if(_inputString[1] == '3') {
         String _local_ip = WiFi.localIP().toString();
         Serial.println(_local_ip);
-        //parseDrawInput("Pw255B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000IP: "+WiFi.localIP().toString());
-        //parseDrawInput("Pe255");
+        //parseDrawActionString("Pw255B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000IP: "+WiFi.localIP().toString());
+        //parseDrawActionString("Pe255");
     }
     if(_inputString[1] == '4') {
-        parseDrawInput("Pw255B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000false: "+String(false) + " true: "+String(true));
-        parseDrawInput("Pe255");
+        parseDrawActionString("Pw255B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000false: "+String(false) + " true: "+String(true));
+        parseDrawActionString("Pe255");
         chk_wifi=true;
     }
     if(_inputString[1] == '5') {
+        //Set encoder value multiplyer
         int _multiplyer = _inputString.substring(2,5).toInt();
         encoder_multplyer = _multiplyer;
     }
     if(_inputString[1] == '6') {
+        //Set 0 Offset
         int _offset = _inputString.substring(2,5).toInt();
         int _prev_val = mainProgramString[_offset].toInt();
         encoder_offset = (_prev_val/encoder_multplyer)-(encoder_val/encoder_multplyer);
     }
     if(_inputString[1] == '7') {
+        //Generate new value and print it on display
         int _offset = _inputString.substring(2,5).toInt();
         int _prev_val = mainProgramString[_offset].toInt();
-        String _calculated_value = String(encoder_val/encoder_multplyer+encoder_offset);
+        String _calculated_value = String((encoder_val+encoder_offset)*encoder_multplyer);
         mainProgramString[_offset] = _calculated_value;
         Serial.println("Caculated encoder value to: "+String(_calculated_value) + " -> " + String(_offset)+ " from: "+String(_prev_val));
     }
@@ -402,13 +411,14 @@ void parseDrawInput(String _inputString2) {
     
   }
   if(_inputString.substring(0,9) == "stringbuf") {
-    Serial.println("last string: "+lastreg());
+    Serial.println("last string: "+mainProgramString[64]);
   }
   
 } 
 
 void loop()
 {
+  WireSlave.update();
   if(tick_update==true) {
     tick_update=false;
     getEncoder();
@@ -416,21 +426,21 @@ void loop()
     if (Serial.available() > 0) {
       String _lnin;
       _lnin = Serial.readString(); // read the incoming byte:
-      parseDrawInput(_lnin);
+      parseDrawActionString(_lnin);
     }
 
     if(udp.listen(6454)) {
       udp.onPacket([](AsyncUDPPacket packet) {
         //Serial.write(packet.data(),packet.length());
         String _data = (const char*)packet.data();
-        parseDrawInput(_data);
+        parseDrawActionString(_data);
       });
     }
 
     if(chk_wifi==true) {
       if (WiFi.status() == WL_CONNECTED) {
-        parseDrawInput("Pw255B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000"+WiFi.localIP().toString());
-        parseDrawInput("Pe255");
+        parseDrawActionString("Pw255B000 460w320h020r000g000b000;T160 460a1f2r100g100b100r000g000b000"+WiFi.localIP().toString());
+        parseDrawActionString("Pe255");
         chk_wifi = false;
       }
     }
@@ -438,7 +448,7 @@ void loop()
       // every event gets consecutive byte so it would be possible to register more than one event, all bytes get reset after handeling
       if(node_events && 0x1) {
         //encoder event
-        parseDrawInput("Pe016");
+        parseDrawActionString("Pe016");
       }
       node_events = 0;
     }
